@@ -1,15 +1,22 @@
 ///////////////////////////////////////////////////////////////////////////////
 
+#include <iostream>
 #include "xLog.hpp"
+#include "xTimeNow.hpp"
 
 ///////////////////////////////////////////////////////////////////////////////
 
-using namespace xEngine::xUtils::xLog;
+using xEngine::xUtils::xLog;
+using xEngine::xUtils::TimeNow;
 
 ///////////////////////////////////////////////////////////////////////////////
 
 int main()
 {
+    TimeNow t = TimeNow();
+    std::cout << t.s_str() << std::endl;
+    std::cout << t.f_str() << std::endl;
+
     xLog.start("xEngine", "./");
     int x =100;
     const char* s = "value_x";

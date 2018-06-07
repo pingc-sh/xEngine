@@ -2,15 +2,15 @@
 
 #include <iostream>
 #include <chrono>
-#include <iomanip>
-#include <sstream> 
-#include <thread>
+#include <sstream>
+#include <iomanip> 
 #include <unistd.h>
 #include "xLog.hpp"
+#include "xTimeNow.hpp"
 
 ///////////////////////////////////////////////////////////////////////////////
 
-using namespace xEngine::xUtils::xLog;
+using xEngine::xUtils::Log;
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -43,28 +43,12 @@ Log& Log::instance()
 
 void Log::openLogFile()
 {
-  auto ms_duration = std::chrono::duration_cast<std::chrono::microseconds>(
-    std::chrono::system_clock::now().time_since_epoch()
-  ).count();
-  auto sec = ms_duration / 1000000;
-  auto ms  = ms_duration % 1000000;
-  std::time_t tt = sec;
-  std::tm* t_gmt = std::gmtime(&tt); 
-
   std::stringstream filename;
   filename << mPath.c_str() << "/" << mName.c_str()
            << "_" 
            << mHost.c_str() 
            << "_"
-           << t_gmt->tm_year + 1900
-           << std::right << std::setfill('0') << std::setw(2) << t_gmt->tm_mon + 1
-           << std::right << std::setfill('0') << std::setw(2) << t_gmt->tm_mday
-           << "-" 
-           << std::right << std::setfill('0') << std::setw(2) << t_gmt->tm_hour
-           << std::right << std::setfill('0') << std::setw(2) << t_gmt->tm_min
-           << std::right << std::setfill('0') << std::setw(2) << t_gmt->tm_sec
-           << "." 
-           << std::right << std::setfill('0') << std::setw(6) << ms
+           << TimeNow().f_str().c_str()
            << ".log";
 
   mFp = fopen(filename.str().c_str(), "a");
@@ -136,44 +120,26 @@ void Log::stop(bool writedisk)
 
 ///////////////////////////////////////////////////////////////////////////////
 
-std::string Log::get_log_head(const char* type)
+int Log::getThreadIdx()
 {
-  auto ms_duration = std::chrono::duration_cast<std::chrono::microseconds>(
-    std::chrono::system_clock::now().time_since_epoch()
-  ).count();
-  auto sec = ms_duration / 1000000;
-  auto ms  = ms_duration % 1000000;
-  std::time_t tt = sec;
-  std::tm* t_gmt = std::gmtime(&tt); 
-
-  std::stringstream head;
-  head << t_gmt->tm_year + 1900
-       << std::right << std::setfill('0') << std::setw(2) << t_gmt->tm_mon + 1
-       << std::right << std::setfill('0') << std::setw(2) << t_gmt->tm_mday
-       << "-" 
-       << std::right << std::setfill('0') << std::setw(2) << t_gmt->tm_hour
-       << std::right << std::setfill('0') << std::setw(2) << t_gmt->tm_min
-       << std::right << std::setfill('0') << std::setw(2) << t_gmt->tm_sec
-       << "." 
-       << std::right << std::setfill('0') << std::setw(6) << ms
-       << " "
-       << mHost.c_str()
-       << " "
-       << mName.c_str() 
-       << " " 
-       << std::this_thread::get_id() 
-       << " " 
-       << type << ": ";
-  return head.str();
+  std::thread::id tid = std::this_thread::get_id();
+  if(mTIDs.find(tid) != mTIDs.end()){
+    return mTIDs[tid];
+  } else {
+    int idx = mTIDs.size() + 1;
+    mTIDs.insert(std::make_pair(tid, idx));
+    return idx;
+  }
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 
-void Log::log(std::string& head, const char* format, std::va_list& args)
+void Log::log(std::string time, const char* type, const char* format, std::va_list& args)
 {
   if(mFp == nullptr) {
     return;
   }
+  std::lock_guard<std::mutex> guard(mMutex);  // make the guard
 
   if(mFp != stdout) {
     if(mLines >= mMaxLines) {  // avoid log file too large 
@@ -183,7 +149,19 @@ void Log::log(std::string& head, const char* format, std::va_list& args)
     mLines++;
   }
 
-  std::fprintf(mFp, "%s", head.c_str());
+  std::stringstream log_head;
+  log_head << time.c_str()
+           << " "
+           << mHost.c_str()
+           << " "
+           << mName.c_str() 
+           << "." 
+           << std::right << std::setfill('0') << std::setw(2) << getThreadIdx() 
+           << " " 
+           << type 
+           << ": ";
+
+  std::fprintf(mFp, "%s", log_head.str().c_str());
   std::vfprintf(mFp, format, args);
   std::fprintf(mFp, "\n");
   std::fflush(mFp);  // flush user space buffer into kernel
@@ -193,11 +171,9 @@ void Log::log(std::string& head, const char* format, std::va_list& args)
 
 void Log::info(const char* format, ...)
 {
-  std::string head = get_log_head("info ");
-  std::lock_guard<std::mutex> guard(mMutex);  // make the guard
   std::va_list args;
   va_start(args, format);
-  log(head, format, args);
+  log(TimeNow().f_str(), "info ", format, args);
   va_end(args);
 }
 
@@ -205,11 +181,9 @@ void Log::info(const char* format, ...)
 
 void Log::warn(const char* format, ...)
 {
-  std::string head = get_log_head("warn ");
-  std::lock_guard<std::mutex> guard(mMutex);  // make the guard
   std::va_list args;
   va_start(args, format);
-  log(head, format, args);
+  log(TimeNow().f_str(), "warn ", format, args);
   va_end(args);
 }
 
@@ -217,11 +191,9 @@ void Log::warn(const char* format, ...)
 
 void Log::error(const char* format, ...)
 {
-  std::string head = get_log_head("error");
-  std::lock_guard<std::mutex> guard(mMutex);  // make the guard
   std::va_list args;
   va_start(args, format);
-  log(head, format, args);
+  log(TimeNow().f_str(), "error", format, args);
   va_end(args);
 }
 
@@ -229,11 +201,9 @@ void Log::error(const char* format, ...)
 
 void Log::debug(const char* format, ...)
 {
-  std::string head = get_log_head("debug");
-  std::lock_guard<std::mutex> guard(mMutex);  // make the guard
   std::va_list args;
   va_start(args, format);
-  log(head, format, args);
+  log(TimeNow().f_str(), "debug", format, args);
   va_end(args);
 }
 
