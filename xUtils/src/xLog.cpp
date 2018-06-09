@@ -120,20 +120,6 @@ void Log::stop(bool writedisk)
 
 ///////////////////////////////////////////////////////////////////////////////
 
-int Log::getThreadIdx()
-{
-  std::thread::id tid = std::this_thread::get_id();
-  if(mTIDs.find(tid) != mTIDs.end()){
-    return mTIDs[tid];
-  } else {
-    int idx = mTIDs.size() + 1;
-    mTIDs.insert(std::make_pair(tid, idx));
-    return idx;
-  }
-}
-
-///////////////////////////////////////////////////////////////////////////////
-
 void Log::log(std::string time, const char* type, const char* format, std::va_list& args)
 {
   if(mFp == nullptr) {
@@ -149,6 +135,14 @@ void Log::log(std::string time, const char* type, const char* format, std::va_li
     mLines++;
   }
 
+  // c++ tid is used for compare purpose and is very long, here make it 
+  // short for dispaly purpose, so introduced thread idx
+  std::thread::id tid = std::this_thread::get_id();
+  if(mTIDs.find(tid) == mTIDs.end()){
+    int idx = mTIDs.size() + 1;
+    mTIDs.insert(std::make_pair(tid, idx));
+  }
+
   std::stringstream log_head;
   log_head << time.c_str()
            << " "
@@ -156,7 +150,7 @@ void Log::log(std::string time, const char* type, const char* format, std::va_li
            << " "
            << mName.c_str() 
            << "." 
-           << std::right << std::setfill('0') << std::setw(2) << getThreadIdx() 
+           << std::right << std::setfill('0') << std::setw(2) << mTIDs[tid] 
            << " " 
            << type 
            << ": ";

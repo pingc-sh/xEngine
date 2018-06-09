@@ -38,7 +38,6 @@ private:
 private:
   void openLogFile();
   void closeLogFile(bool writedisk);
-  int  getThreadIdx();  // index threads inside Log
   void log(std::string time, const char* type, const char* format, std::va_list& args);
 
 public:
