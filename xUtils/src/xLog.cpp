@@ -16,17 +16,17 @@ using xEngine::xUtils::Log;
 
 Log::Log()
 {
-  mIsStarted = false;
-  mFp = nullptr;
-  mMaxLines = 0;
-  mLines = 0;
+  mIsStarted  = false;
+  mLogFp      = nullptr;
+  mLogMaxLines = 0;
+  mLogCurLines = 0;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 
 Log::~Log()
 {
-  if(mFp != nullptr && mFp != stdout) {
+  if(mLogFp != nullptr && mLogFp != stdout) {
     stop(true);  // stop log, flush buf into kernel and write disk
   }
 }
@@ -44,15 +44,15 @@ Log& Log::instance()
 void Log::openLogFile()
 {
   std::stringstream filename;
-  filename << mPath.c_str() << "/" << mName.c_str()
+  filename << mLogPath.c_str() << "/" << mAppName.c_str()
            << "_" 
            << mHost.c_str() 
            << "_"
            << TimeNow().f_str().c_str()
            << ".log";
 
-  mFp = fopen(filename.str().c_str(), "a");
-  if(mFp == nullptr) {
+  mLogFp = fopen(filename.str().c_str(), "a");
+  if(mLogFp == nullptr) {
     std::cout << "error: cannot create logfile, please check path" << std::endl;
     exit(-1);
   }
@@ -62,20 +62,20 @@ void Log::openLogFile()
 
 void Log::closeLogFile(bool writedisk)
 {
-  if(mFp != nullptr && mFp != stdout) {
+  if(mLogFp != nullptr && mLogFp != stdout) {
     if(writedisk) {
-      fsync(fileno(mFp));  // flush kernel space buffer into disk
+      fsync(fileno(mLogFp));  // flush kernel space buffer into disk
     }
-    std::fclose(mFp);
+    std::fclose(mLogFp);
   }
 
-  mFp = nullptr;
-  mLines = 0;
+  mLogFp = nullptr;
+  mLogCurLines = 0;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 
-void Log::start(std::string name, std::string path, unsigned maxlines)
+void Log::start(std::string appname, std::string path, unsigned maxlines)
 {
   std::lock_guard<std::mutex> guard(mMutex);  // make the guard
   if(mIsStarted) {  // to avoid multiple times of start
@@ -87,19 +87,19 @@ void Log::start(std::string name, std::string path, unsigned maxlines)
   gethostname(hostname, 64);
   mHost = hostname;
 
-  if(!name.empty()) {  // setup application name
-    mName = name;
+  if(!appname.empty()) {  // setup application name
+    mAppName = appname;
   }
 
   if(path.empty()) {  // if no path setup then stdout else create log file
-    mFp = stdout;
+    mLogFp = stdout;
   } else {
-    mPath = path;
+    mLogPath = path;
     openLogFile();
   }
 
   if(maxlines > 0) {
-    mMaxLines = maxlines;
+    mLogMaxLines = maxlines;
   }
 }
 
@@ -113,7 +113,7 @@ void Log::stop(bool writedisk)
   }
   mIsStarted = false;
 
-  if(mFp != stdout) {
+  if(mLogFp != stdout) {
     closeLogFile(writedisk);
   }
 }
@@ -122,25 +122,17 @@ void Log::stop(bool writedisk)
 
 void Log::log(std::string time, const char* type, const char* format, std::va_list& args)
 {
-  if(mFp == nullptr) {
+  if(mLogFp == nullptr) {
     return;
   }
   std::lock_guard<std::mutex> guard(mMutex);  // make the guard
 
-  if(mFp != stdout) {
-    if(mLines >= mMaxLines) {  // avoid log file too large 
+  if(mLogFp != stdout) {
+    if(mLogCurLines >= mLogMaxLines) {  // avoid log file too large 
       closeLogFile(true);  // close current log file and wirte to disk
       openLogFile();  // create a new log file
     }
-    mLines++;
-  }
-
-  // c++ tid is used for compare purpose and is very long, here make it 
-  // short for dispaly purpose, so introduced thread idx
-  std::thread::id tid = std::this_thread::get_id();
-  if(mTIDs.find(tid) == mTIDs.end()){
-    int idx = mTIDs.size() + 1;
-    mTIDs.insert(std::make_pair(tid, idx));
+    mLogCurLines++;
   }
 
   std::stringstream log_head;
@@ -148,17 +140,17 @@ void Log::log(std::string time, const char* type, const char* format, std::va_li
            << " "
            << mHost.c_str()
            << " "
-           << mName.c_str() 
+           << mAppName.c_str() 
            << "." 
-           << std::right << std::setfill('0') << std::setw(2) << mTIDs[tid] 
+           << std::hex << std::this_thread::get_id()
            << " " 
            << type 
            << ": ";
 
-  std::fprintf(mFp, "%s", log_head.str().c_str());
-  std::vfprintf(mFp, format, args);
-  std::fprintf(mFp, "\n");
-  std::fflush(mFp);  // flush user space buffer into kernel
+  std::fprintf(mLogFp, "%s", log_head.str().c_str());
+  std::vfprintf(mLogFp, format, args);
+  std::fprintf(mLogFp, "\n");
+  std::fflush(mLogFp);  // flush user space buffer into kernel
 }
 
 ///////////////////////////////////////////////////////////////////////////////

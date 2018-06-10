@@ -8,7 +8,6 @@
 #include <cstdio>
 #include <cstdarg>
 #include <thread>
-#include <unordered_map>
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -20,15 +19,14 @@ namespace xUtils {
 class Log
 {
 private:
-  bool        mIsStarted;  // avoid multiple start of log instance
-  std::mutex  mMutex;      // mutex to make thread safe on logging
-  std::string mHost;       // hostname that applications runs on
-  std::string mName;       // application name
-  std::string mPath;       // path for log files if log to file
-  std::FILE*  mFp;         // current log file fp if log to file
-  unsigned    mMaxLines;   // max lines for a log file
-  unsigned    mLines;      // current log file lines if log to file
-  std::unordered_map<std::thread::id, int> mTIDs;  // hold thread idx
+  bool        mIsStarted;    // avoid multiple start of log instance
+  std::mutex  mMutex;        // mutex to make thread safe on logging
+  std::string mHost;         // hostname that applications runs on
+  std::string mAppName;      // application name
+  std::string mLogPath;      // path for log files if log to file
+  std::FILE*  mLogFp;        // current log file fp if log to file
+  unsigned    mLogMaxLines;  // max lines for a log file
+  unsigned    mLogCurLines;  // current log file lines if log to file
 
 private:
   Log();
@@ -38,14 +36,17 @@ private:
 private:
   void openLogFile();
   void closeLogFile(bool writedisk);
-  void log(std::string time, const char* type, const char* format, std::va_list& args);
+  void log(std::string time,     // log time
+           const char* type,     // log type: info/warn/error/debug
+           const char* format,   // log format
+           std::va_list& args);  // log variables
 
 public:
   ~Log();
   static Log& instance();
 
 public:
-  void start(std::string name, std::string path="", unsigned maxlines=512*1024);
+  void start(std::string appname, std::string path="", unsigned maxlines=512*1024);
   void stop (bool writedisk = true);
   void info (const char* format, ...);
   void warn (const char* format, ...);
