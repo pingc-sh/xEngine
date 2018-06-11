@@ -16,8 +16,8 @@ using xEngine::xUtils::Log;
 
 Log::Log()
 {
-  mIsStarted  = false;
-  mLogFp      = nullptr;
+  mIsStarted   = false;
+  mLogFp       = nullptr;
   mLogMaxLines = 0;
   mLogCurLines = 0;
 }

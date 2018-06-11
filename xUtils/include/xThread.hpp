@@ -15,31 +15,26 @@ namespace xUtils {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-class Thread
+class ManagedThread
 {
 private:
-  std::thread* mThread;
+  int  mState;
   void init();
   void done();
 
 protected:
-  int mState;  // thread state: 
-
   // preWork must return ture to get thread going on
   virtual bool preWork() { return true; }
   virtual void run() {}
   virtual void postWork() {}
 
 public:
-  Thread();
-  virtual ~Thread();
+  ManagedThread();
+  virtual ~ManagedThread();
 
 public:
-  inline int  state() { return mState; }
-  inline void executor(std::thread* t) { mThread = t; }
-
+  inline int state() { return mState; }
   void start();
-  void join();
 };
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -47,14 +42,13 @@ public:
 class ThreadManager
 {
 private:
-  std::list<Thread*> mThreads;
+  std::list<std::tuple<ManagedThread*, std::thread*>> mThreads;
   std::mutex mMutex;
   bool mIsWaiting;
   bool mIsAllDone;
-  int  mThreadNum;
 
 private:
-  ThreadManager() : mIsWaiting(false), mIsAllDone(false), mThreadNum(0) {}
+  ThreadManager() : mIsWaiting(false), mIsAllDone(false) {}
   ThreadManager(const ThreadManager&) = delete;
   ThreadManager& operator=(const ThreadManager&) = delete;
 
@@ -63,7 +57,7 @@ public:
   static ThreadManager& instance();
 
 public:
-  void run(Thread* thread);  // start a thread
+  int  run(ManagedThread* thread);  // start a thread
   void wait();  // called after all threads spawned
 };
 

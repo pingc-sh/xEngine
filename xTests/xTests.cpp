@@ -9,12 +9,12 @@
 
 using xEngine::xUtils::xLog;
 using xEngine::xUtils::TimeNow;
-using xEngine::xUtils::Thread;
+using xEngine::xUtils::ManagedThread;
 using xEngine::xUtils::xThreadManager;
 
 ///////////////////////////////////////////////////////////////////////////////
 
-class TestThread1 : public Thread
+class TestThread1 : public ManagedThread
 {
 protected:
   bool preWork() { xLog.info("TestThread1 pre-work"); return true; }
@@ -22,7 +22,7 @@ protected:
   void postWork() { xLog.info("TestThread1 post-work"); }
 };
 
-class TestThread2 : public Thread
+class TestThread2 : public ManagedThread
 {
 protected:
   bool preWork() { xLog.info("TestThread2 pre-work"); return true; }
@@ -39,12 +39,12 @@ int main()
     std::cout << t.f_str() << std::endl;
 
     xLog.start("xEngine", "./");
-    TestThread1* t1 = new TestThread1();
-    TestThread2* t2 = new TestThread2();
+    TestThread1 t1;
+    TestThread2 t2;
     xLog.info("Two thread objects created");
-    
-    xThreadManager.run(t1);
-    xThreadManager.run(t2);
+      
+    xThreadManager.run(&t1);
+    xThreadManager.run(&t2);
     xThreadManager.wait();
     xLog.info("Two thread objects joined");
     xLog.stop();

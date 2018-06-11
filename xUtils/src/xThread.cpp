@@ -5,16 +5,8 @@
 
 ///////////////////////////////////////////////////////////////////////////////
 
-using xEngine::xUtils::Thread;
+using xEngine::xUtils::ManagedThread;
 using xEngine::xUtils::ThreadManager;
-
-///////////////////////////////////////////////////////////////////////////////
-
-// thread states
-static const int THREAD_STATE_UNKNOWN = 0;
-static const int THREAD_STATE_CREATED = 1;
-static const int THREAD_STATE_STARTED = 2;
-static const int THREAD_STATE_STOPPED = 3;
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -69,32 +61,36 @@ void ThreadNotify::wait()
 
 ///////////////////////////////////////////////////////////////////////////////
 
-Thread::Thread()
+// thread states
+static const int THREAD_STATE_UNKNOWN = 0;
+static const int THREAD_STATE_CREATED = 1;
+static const int THREAD_STATE_STARTED = 2;
+static const int THREAD_STATE_STOPPED = 3;
+
+///////////////////////////////////////////////////////////////////////////////
+
+ManagedThread::ManagedThread()
 {
-  mThread = nullptr;
-  mState  = THREAD_STATE_UNKNOWN;
+  mState = THREAD_STATE_UNKNOWN;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 
-Thread::~Thread()
+ManagedThread::~ManagedThread()
 {
-  if(mThread != nullptr) {
-    delete mThread;
-  }
-  mState  = THREAD_STATE_UNKNOWN;
+  mState = THREAD_STATE_UNKNOWN;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 
-void Thread::init()
+void ManagedThread::init()
 {
   mState = THREAD_STATE_STARTED;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 
-void Thread::done()
+void ManagedThread::done()
 {
   mState = THREAD_STATE_STOPPED;
   ThreadNotify::instance().notify();
@@ -102,21 +98,14 @@ void Thread::done()
 
 ///////////////////////////////////////////////////////////////////////////////
 
-void Thread::start()
+void ManagedThread::start()
 {
-  init();  // init this thread
-  if(preWork()) { // if preWork is good then go on, otherwise not excute
+  init();
+  if(preWork()) {  // if preWork is good then go on, otherwise not excute
     run();
     postWork();
   }
   done();  // thread done, notify ThreadManager
-}
-
-///////////////////////////////////////////////////////////////////////////////
-
-void Thread::join()
-{
-  mThread->join();
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -129,7 +118,7 @@ ThreadManager& ThreadManager::instance()
 
 ///////////////////////////////////////////////////////////////////////////////
 
-void* RunThread(Thread* thread)
+void* RunThread(ManagedThread* thread)
 {
   thread->start();
   return nullptr;
@@ -137,21 +126,19 @@ void* RunThread(Thread* thread)
 
 ///////////////////////////////////////////////////////////////////////////////
 
-void ThreadManager::run(Thread* thread)
+int ThreadManager::run(ManagedThread* thread)
 {
   if(thread == nullptr) {
-    return;
+    return -1;
   }
-
   std::thread* t = new std::thread(RunThread, thread);
   if(t == nullptr) {
-    return;
+    return -1;
   }
-  thread->executor(t);
 
-  std::unique_lock<std::mutex> ulock(mMutex);
-  mThreads.push_back(thread);
-  mThreadNum++;
+  std::lock_guard<std::mutex> guard(mMutex);
+  mThreads.push_back(std::make_tuple(thread, t));
+  return 0;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -159,7 +146,7 @@ void ThreadManager::run(Thread* thread)
 void ThreadManager::wait()
 {
   { // make sure there is only one wait
-    std::unique_lock<std::mutex> ulock(mMutex);
+    std::lock_guard<std::mutex> guard(mMutex);;
     if(mIsWaiting) {
       return;
     }
@@ -169,16 +156,18 @@ void ThreadManager::wait()
   // wait and join all other threads, if all done then return.
   while(!mIsAllDone) {
     ThreadNotify::instance().wait();
-    std::unique_lock<std::mutex> ulock(mMutex);
+    std::lock_guard<std::mutex> guard(mMutex);
 
     for(auto ite = mThreads.begin(); ite != mThreads.end(); ++ite) {
-      if((*ite)->state() != THREAD_STATE_STOPPED) {
+      ManagedThread* thread = std::get<0>(*ite);
+      if(thread->state() != THREAD_STATE_STOPPED) {
         continue;
       }
-      (*ite)->join();
-      mThreads.erase(ite++);  // std::thread object is deleted in Thread destructor
+      std::thread* t = std::get<1>(*ite);
+      t->join();
+      delete t;
+      mThreads.erase(ite++);
     }
-
     if(mThreads.empty()) {
       mIsAllDone = true;
     }
