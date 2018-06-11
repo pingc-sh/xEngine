@@ -79,9 +79,8 @@ T* MsgQueue<T>::timedRecv(int milliseconds)
   std::unique_lock<std::mutex> ulock(mMutex);
   if(mCondVar.wait_for(ulock, 
                        std::chrono::milliseconds(milliseconds), 
-                       [=]{return mMessaging;})) {
+                       [=]{ return mMessaging; })) {
     mMessaging = false;
-    
     msg = mMessages.front();
     mMessages.pop_front();
   }
